@@ -7,7 +7,7 @@ on:
 
 env:
   DOCKERHUB_NAMESPACE: ${{ secrets.DOCKER_USERNAME }}
-  GHCR_NAMESPACE: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
+  GHCR_NAMESPACE: ${{ github.repository_owner }}
 
 jobs:
   build-deploy:
@@ -18,7 +18,8 @@ jobs:
 
     steps:
     ### 1. CHECKOUT ###
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     ### 2. SETUP BUILDX ###
     - name: Set up Docker Buildx
@@ -29,22 +30,22 @@ jobs:
       working-directory: ./user-service
       run: |
         docker build -t user-service:latest \
-                    -t $DOCKERHUB_NAMESPACE/booking-user:latest \
-                    -t ghcr.io/$GHCR_NAMESPACE/booking-user:latest .
+                     -t $DOCKERHUB_NAMESPACE/booking-user:latest \
+                     -t ghcr.io/$GHCR_NAMESPACE/booking-user:latest .
 
     - name: Build Flight Service
       working-directory: ./flight-service
       run: |
         docker build -t flight-service:latest \
-                    -t $DOCKERHUB_NAMESPACE/booking-flight:latest \
-                    -t ghcr.io/$GHCR_NAMESPACE/booking-flight:latest .
+                     -t $DOCKERHUB_NAMESPACE/booking-flight:latest \
+                     -t ghcr.io/$GHCR_NAMESPACE/booking-flight:latest .
 
     - name: Build Frontend
       working-directory: ./frontend
       run: |
         docker build -t frontend:latest \
-                    -t $DOCKERHUB_NAMESPACE/booking-frontend:latest \
-                    -t ghcr.io/$GHCR_NAMESPACE/booking-frontend:latest .
+                     -t $DOCKERHUB_NAMESPACE/booking-frontend:latest \
+                     -t ghcr.io/$GHCR_NAMESPACE/booking-frontend:latest .
 
     ### 4. LOGIN TO REGISTRIES ###
     - name: Login to DockerHub
@@ -57,8 +58,8 @@ jobs:
       uses: docker/login-action@v3
       with:
         registry: ghcr.io
-        username: ${{ secrets.GHCR_USERNAME || github.actor }}
-        password: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GHCR_PAT }}
 
     ### 5. PUSH IMAGES ###
     - name: Push to DockerHub
@@ -74,17 +75,23 @@ jobs:
         docker push ghcr.io/$GHCR_NAMESPACE/booking-frontend:latest
 
     ### 6. KUBERNETES DEPLOYMENT ###
-    - name: Deploy to Cluster
+    - name: Deploy to Kubernetes Cluster
       if: ${{ secrets.KUBE_CONFIG }}
       run: |
         echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig
         export KUBECONFIG=kubeconfig
-        
+
         # Update images
         kubectl set image -n booking-app deployment/user-service \
           user-service=ghcr.io/$GHCR_NAMESPACE/booking-user:latest
-        
+
         kubectl set image -n booking-app deployment/flight-service \
           flight-service=ghcr.io/$GHCR_NAMESPACE/booking-flight:latest
-        
+
+        kubectl set image -n booking-app deployment/frontend \
+          frontend=ghcr.io/$GHCR_NAMESPACE/booking-frontend:latest
+
+        # Restart for rollout
+        kubectl rollout restart -n booking-app deployment/user-service
+        kubectl rollout restart -n booking-app deployment/flight-service
         kubectl rollout restart -n booking-app deployment/frontend
