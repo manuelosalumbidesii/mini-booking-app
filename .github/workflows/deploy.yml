@@ -32,7 +32,7 @@ jobs:
     # 🧪 3. Install backend deps, run tests & lint
     ##################################################
     - name: Install dependencies & run tests (User Service)
-       working-directory: ./user-service
+      working-directory: ./user-service
       run: |
         pip install -r requirements.txt
         pip install pytest flake8
